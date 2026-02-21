@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "worker": "python -m agent_eval.autotune_service --poll-seconds 15",
+    "dev:all": "bash scripts/run_server_and_worker.sh"
   },
   "dependencies": {
     "@elevenlabs/client": "^0.14.0",
