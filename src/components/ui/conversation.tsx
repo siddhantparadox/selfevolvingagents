@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Flame } from "lucide-react";
 import { forwardRef } from "react";
 import {
   StickToBottom,
@@ -24,7 +24,7 @@ export function Conversation({
       initial={initial}
       resize={resize}
       className={cn(
-        "relative h-[560px] overflow-hidden rounded-2xl border border-white/10 bg-[#0f1116]",
+        "glass-panel relative h-[560px] overflow-hidden rounded-3xl",
         className
       )}
       {...props}
@@ -41,8 +41,8 @@ export function ConversationContent({
 }: ConversationContentProps) {
   return (
     <StickToBottom.Content
-      className={cn("p-6", className)}
-      scrollClassName={cn("h-full overflow-y-auto", scrollClassName)}
+      className={cn("p-4 sm:p-6", className)}
+      scrollClassName={cn("soft-scroll h-full overflow-y-auto", scrollClassName)}
       {...props}
     />
   );
@@ -78,9 +78,15 @@ export const ConversationEmptyState = forwardRef<
       )}
       {...props}
     >
-      {icon ? <div className="mb-4">{icon}</div> : null}
-      <p className="text-lg font-semibold text-white">{title}</p>
-      {description ? <p className="mt-2 max-w-sm text-sm text-slate-400">{description}</p> : null}
+      <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full border border-[color:var(--panel-border)] bg-white/5 text-[color:var(--primary)] shadow-[0_6px_20px_rgba(4,7,12,0.35)]">
+        {icon ?? <Flame className="h-6 w-6" />}
+      </div>
+      <p className="font-display text-2xl font-semibold text-[color:var(--foreground)]">{title}</p>
+      {description ? (
+        <p className="mt-2 max-w-sm text-sm leading-relaxed text-[color:var(--muted-foreground)]">
+          {description}
+        </p>
+      ) : null}
     </div>
   );
 });
@@ -99,7 +105,7 @@ export function ConversationScrollButton({
     <button
       type="button"
       className={cn(
-        "absolute bottom-4 left-1/2 z-20 inline-flex -translate-x-1/2 items-center justify-center rounded-full border border-white/15 bg-black/70 p-2 text-white shadow-lg transition hover:bg-black/90",
+        "absolute bottom-4 left-1/2 z-20 inline-flex -translate-x-1/2 items-center justify-center rounded-full border border-[color:var(--panel-border)] bg-[color:var(--panel-bg)]/95 p-2 text-[color:var(--foreground)] shadow-[0_10px_22px_rgba(7,11,18,0.42)] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--background)]",
         className
       )}
       onClick={() => void scrollToBottom("smooth")}
