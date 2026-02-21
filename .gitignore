@@ -1,6 +1,4 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
+# Node / Next.js
 /node_modules
 /.pnp
 .pnp.*
@@ -9,33 +7,34 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-
-# testing
 /coverage
-
-# next.js
 /.next/
 /out/
-
-# production
 /build
-
-# misc
-.DS_Store
-*.pem
-
-# debug
+*.tsbuildinfo
+next-env.d.ts
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
-
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
 .vercel
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Secrets and local env
+.env
+.env.*
+*.pem
+
+# Python/local artifacts
+.venv/
+.venv-*/
+.kaggle/
+__pycache__/
+*.pyc
+.DS_Store
+elevenlabs_braintrust_eval.egg-info/
+
+# Large/local raw audio and transcript response dumps
+data/kaggle_911/911_first6sec/
+data/kaggle_911/elevenlabs_transcripts_json/
+data/kaggle_911/elevenlabs_transcripts_json_additional/
+data/kaggle_911/elevenlabs_transcripts_json_expanded/

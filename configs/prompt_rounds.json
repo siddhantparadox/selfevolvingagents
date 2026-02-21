@@ -1,0 +1,14 @@
+[
+  {
+    "name": "strict",
+    "prompt": "Reply with exactly one lowercase language label: english, spanish, french, german, or italian."
+  },
+  {
+    "name": "compact",
+    "prompt": "Detect user language and return only the lowercase label. No punctuation, no explanation."
+  },
+  {
+    "name": "tokenized",
+    "prompt": "Classify language only. Output one token from {english,spanish,french,german,italian}."
+  }
+]
