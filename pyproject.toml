@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elevenlabs-braintrust-eval"
+version = "0.1.0"
+description = "Run Braintrust experiments against ElevenLabs agents"
+readme = "README-elevenlabs-braintrust.md"
+requires-python = ">=3.10"
+dependencies = [
+  "braintrust>=0.5.6",
+  "autoevals>=0.1.0",
+  "elevenlabs>=2.36.1",
+  "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+elevenlabs-braintrust-eval = "agent_eval.run:main"
+run-train-test-experiments = "agent_eval.run_train_test:main"
+braintrust-strategy-proposer = "agent_eval.strategy_proposer:main"
+autotune-service = "agent_eval.autotune_service:main"
+
+[tool.setuptools]
+packages = ["agent_eval"]
