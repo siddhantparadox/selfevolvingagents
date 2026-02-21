@@ -1,0 +1,41 @@
+​Self Improving Agents - Hack
+​💥 Build with the future stack of AI.
+
+​🚀 In just one day, teams will prototype AI copilots, autonomous research agents, customer-support brains, real-time data explorers, and creative design systems—the kind of tools real companies ship.
+
+​You’re not watching the future of intelligent software happen.
+You’re building it. ⚡🔥
+
+​Thank you to our ​Sponsors!
+​Google DeepMind
+
+​ElevenLabs
+
+​Datadog
+
+​Braintrust
+
+​Modulate
+
+​Airia
+
+​Evolution Equity Partners
+
+​Lightdash
+
+​Senso
+
+​Flora Ai
+
+​RunAnywhere
+
+​Cleric
+
+Build agents that don’t just think, they act. Build autonomous, self-improving AI agents that can tap into real-time data sources, make sense of what they find, and take meaningful action without human intervention. Your challenge is to design agents that are not just reactive, but continuously learn and  improve as they operate—creating solutions that feel alive, adaptive, and built for real-world impact.
+Judging Criteria
+Autonomy — How well does the agent act on real-time data without manual intervention?
+Idea — Does the solution have the potential to solve a meaningful problem or demonstrate real-world value?
+Technical Implementation — How well was the solution implemented?
+Tool Use — Did the solution effectively use at least 3 sponsor tools?
+Presentation (Demo) — Demonstration of the solution in 3 minutes 
+
