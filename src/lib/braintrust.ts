@@ -1,3 +1,14 @@
+import {
+  SpanKind,
+  type AttributeValue,
+  type Span,
+  type Tracer,
+  trace,
+} from "@opentelemetry/api";
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import type { AgentDecision } from "@/lib/gemini";
 
 type BraintrustLogEvent = {
@@ -49,10 +60,49 @@ type SafetyActionLogInput = {
   action: Record<string, unknown>;
 };
 
+type OTelSpanInput = {
+  spanName: string;
+  callId: string;
+  turnId?: number;
+  startTimestamp: string;
+  endTimestamp: string;
+  attributes: Record<string, unknown>;
+  events?: Array<{
+    name: string;
+    timestamp: string;
+    attributes?: Record<string, unknown>;
+  }>;
+};
+
+type OTelRuntime = {
+  provider: NodeTracerProvider;
+  tracer: Tracer;
+  projectId: string;
+};
+
 const MAX_TRANSCRIPT_TURNS_PER_CALL = 300;
 const MAX_TRANSCRIPT_CALLS = 500;
 const transcriptStore = new Map<string, TranscriptTurn[]>();
 let mostRecentCallId: string | undefined;
+let otelRuntime: OTelRuntime | null = null;
+
+function debugBraintrust(message: string, error?: unknown) {
+  if (process.env.BRAINTRUST_DEBUG !== "true") {
+    return;
+  }
+
+  if (error instanceof Error) {
+    console.warn(`[braintrust] ${message}: ${error.message}`);
+    return;
+  }
+
+  if (error) {
+    console.warn(`[braintrust] ${message}:`, error);
+    return;
+  }
+
+  console.warn(`[braintrust] ${message}`);
+}
 
 function pruneTranscriptStore() {
   while (transcriptStore.size > MAX_TRANSCRIPT_CALLS) {
@@ -95,6 +145,23 @@ function transcriptToText(transcript: TranscriptTurn[]) {
         `Turn ${turn.turn_id} User: ${turn.user_text}\nTurn ${turn.turn_id} Agent: ${turn.assistant_text}`
     )
     .join("\n");
+}
+
+function transcriptToMessages(transcript: TranscriptTurn[]) {
+  return transcript.flatMap((turn) => [
+    {
+      role: "user",
+      turn_id: turn.turn_id,
+      content: turn.user_text,
+      timestamp: turn.timestamp,
+    },
+    {
+      role: "assistant",
+      turn_id: turn.turn_id,
+      content: turn.assistant_text,
+      timestamp: turn.timestamp,
+    },
+  ]);
 }
 
 function readString(value: unknown) {
@@ -179,7 +246,127 @@ function getConfig() {
     baseUrl,
     projectId,
     apiKey,
+    otelUrl: `${baseUrl}/otel/v1/traces`,
   };
+}
+
+function getOtelRuntime() {
+  const config = getConfig();
+  if (!config) {
+    return null;
+  }
+
+  if (otelRuntime && otelRuntime.projectId === config.projectId) {
+    return otelRuntime;
+  }
+
+  const exporter = new OTLPTraceExporter({
+    url: config.otelUrl,
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "x-bt-parent": `project_id:${config.projectId}`,
+    },
+  });
+
+  const provider = new NodeTracerProvider({
+    resource: resourceFromAttributes({
+      "service.name": "selfimprovingagents",
+      "deployment.environment": process.env.NODE_ENV ?? "development",
+    }),
+    spanProcessors: [new BatchSpanProcessor(exporter)],
+  });
+
+  provider.register();
+
+  otelRuntime = {
+    provider,
+    tracer: trace.getTracer("selfimprovingagents.braintrust", "0.1.0"),
+    projectId: config.projectId,
+  };
+
+  return otelRuntime;
+}
+
+function toOpenTelemetryAttribute(value: unknown): AttributeValue {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    const isPrimitiveArray = value.every(
+      (item) =>
+        typeof item === "string" ||
+        typeof item === "number" ||
+        typeof item === "boolean"
+    );
+
+    if (isPrimitiveArray) {
+      return value as AttributeValue;
+    }
+  }
+
+  if (value === undefined) {
+    return "";
+  }
+
+  return JSON.stringify(value);
+}
+
+function setSpanAttributes(span: Span, attributes: Record<string, unknown>) {
+  for (const [key, value] of Object.entries(attributes)) {
+    if (value === undefined) continue;
+    span.setAttribute(key, toOpenTelemetryAttribute(value));
+  }
+}
+
+function toDate(isoTime: string) {
+  const ms = Date.parse(isoTime);
+  if (!Number.isFinite(ms)) {
+    return new Date();
+  }
+  return new Date(ms);
+}
+
+async function sendOtelSpan(input: OTelSpanInput) {
+  const runtime = getOtelRuntime();
+  if (!runtime) {
+    debugBraintrust("OTel runtime unavailable; skipping span export");
+    return false;
+  }
+
+  const span = runtime.tracer.startSpan(
+    input.spanName,
+    {
+      kind: SpanKind.INTERNAL,
+      startTime: toDate(input.startTimestamp),
+    }
+  );
+
+  setSpanAttributes(span, {
+    "braintrust.project_id": runtime.projectId,
+    call_id: input.callId,
+    ...(input.turnId ? { turn_id: input.turnId } : {}),
+    ...input.attributes,
+  });
+
+  for (const event of input.events ?? []) {
+    span.addEvent(
+      event.name,
+      Object.fromEntries(
+        Object.entries(event.attributes ?? {}).map(([key, value]) => [
+          key,
+          toOpenTelemetryAttribute(value),
+        ])
+      ),
+      toDate(event.timestamp)
+    );
+  }
+
+  span.end(toDate(input.endTimestamp));
+
+  await runtime.provider.forceFlush();
+  debugBraintrust(`Exported OTel span '${input.spanName}'`);
+  return true;
 }
 
 async function insertProjectLogs(events: BraintrustLogEvent[]) {
@@ -235,6 +422,7 @@ export async function logAgentTurnEvent(input: AgentTurnLogInput) {
     action_taken: input.decision.action.type,
   });
   const fullTranscriptText = transcriptToText(fullTranscript);
+  const conversationMessages = transcriptToMessages(fullTranscript);
 
   const payload = {
     call_id: input.callId,
@@ -252,6 +440,7 @@ export async function logAgentTurnEvent(input: AgentTurnLogInput) {
     full_transcript_text: fullTranscriptText,
   };
 
+  let logInserted = false;
   try {
     await insertProjectLogs([
       {
@@ -283,9 +472,81 @@ export async function logAgentTurnEvent(input: AgentTurnLogInput) {
         created: input.timestamp,
       },
     ]);
-    return;
+    logInserted = true;
   } catch {
+    debugBraintrust("Project log insert failed in logAgentTurnEvent");
     // Keep turn processing non-blocking.
+  }
+
+  try {
+    const endMs = Date.parse(input.timestamp);
+    const startMs = Number.isFinite(endMs) ? Math.max(0, endMs - input.latencyMs) : Date.now();
+    await sendOtelSpan({
+      spanName: "weather_agent.turn",
+      callId: input.callId,
+      turnId: input.turnId,
+      startTimestamp: new Date(startMs).toISOString(),
+      endTimestamp: input.timestamp,
+      attributes: {
+        "openinference.span.kind": "AGENT",
+        "input.value": input.userText,
+        "output.value": input.decision.spoken_response,
+        "gen_ai.prompt": input.userText,
+        "gen_ai.completion": input.decision.spoken_response,
+        "gen_ai.input.messages": conversationMessages,
+        "gen_ai.output.messages": [
+          {
+            role: "assistant",
+            content: input.decision.spoken_response,
+            turn_id: input.turnId,
+            timestamp: input.timestamp,
+          },
+        ],
+        "braintrust.input_json": {
+          messages: conversationMessages,
+          input_emotion_state: input.inputEmotionState,
+          location: input.location,
+        },
+        "braintrust.output_json": {
+          risk_level: input.decision.risk_level,
+          emotion_state: input.decision.emotion_state,
+          deescalation_style: input.decision.deescalation_style,
+          spoken_response: input.decision.spoken_response,
+          action: input.decision.action,
+        },
+        "weather_agent.tool_calls": input.toolCalls,
+        "weather_agent.tool_outputs": input.toolOutputs,
+        "weather_agent.full_transcript": fullTranscript,
+        "weather_agent.full_transcript_text": fullTranscriptText,
+      },
+      events: [
+        {
+          name: "gen_ai.user.message",
+          timestamp: input.timestamp,
+          attributes: {
+            role: "user",
+            content: input.userText,
+            turn_id: input.turnId,
+          },
+        },
+        {
+          name: "gen_ai.assistant.message",
+          timestamp: input.timestamp,
+          attributes: {
+            role: "assistant",
+            content: input.decision.spoken_response,
+            turn_id: input.turnId,
+          },
+        },
+      ],
+    });
+  } catch (error) {
+    debugBraintrust("OTel span export failed in logAgentTurnEvent", error);
+    // Keep turn processing non-blocking.
+  }
+
+  if (logInserted) {
+    return;
   }
 
   try {
@@ -305,7 +566,8 @@ export async function logAgentTurnEvent(input: AgentTurnLogInput) {
       full_transcript: fullTranscript,
       full_transcript_text: fullTranscriptText,
     });
-  } catch {
+  } catch (error) {
+    debugBraintrust("Legacy ingest failed in logAgentTurnEvent", error);
     // Best-effort only.
   }
 }
@@ -315,7 +577,9 @@ export async function logSafetyActionEvent(input: SafetyActionLogInput) {
   const transcriptFromContext = readTranscriptFromContext(input.userContext);
   const fullTranscript = transcriptFromContext ?? transcriptStore.get(input.callId) ?? [];
   const fullTranscriptText = transcriptToText(fullTranscript);
+  const conversationMessages = transcriptToMessages(fullTranscript);
 
+  let logInserted = false;
   try {
     await insertProjectLogs([
       {
@@ -344,9 +608,77 @@ export async function logSafetyActionEvent(input: SafetyActionLogInput) {
         created: input.timestamp,
       },
     ]);
-    return;
-  } catch {
+    logInserted = true;
+  } catch (error) {
+    debugBraintrust("Project log insert failed in logSafetyActionEvent", error);
     // Keep tool execution non-blocking.
+  }
+
+  try {
+    await sendOtelSpan({
+      spanName: "weather_agent.safety_action",
+      callId: input.callId,
+      turnId: input.turnId,
+      startTimestamp: input.timestamp,
+      endTimestamp: input.timestamp,
+      attributes: {
+        "openinference.span.kind": "TOOL",
+        "tool.name": "execute_safety_action",
+        "input.value": JSON.stringify({
+          action_type: input.actionType,
+          reason: input.reason,
+          urgency: input.urgency,
+          full_transcript: fullTranscript,
+        }),
+        "output.value": input.result,
+        "gen_ai.input.messages": conversationMessages,
+        "braintrust.input_json": {
+          action_type: input.actionType,
+          reason: input.reason,
+          urgency: input.urgency,
+          user_context: input.userContext,
+          messages: conversationMessages,
+          full_transcript: fullTranscript,
+        },
+        "braintrust.output_json": {
+          result: input.result,
+          action: input.action,
+        },
+        "weather_agent.full_transcript": fullTranscript,
+        "weather_agent.full_transcript_text": fullTranscriptText,
+      },
+      events: [
+        {
+          name: "gen_ai.user.message",
+          timestamp: input.timestamp,
+          attributes: {
+            role: "user",
+            content:
+              fullTranscript.length > 0
+                ? fullTranscript[fullTranscript.length - 1].user_text
+                : input.reason,
+          },
+        },
+        {
+          name: "gen_ai.assistant.message",
+          timestamp: input.timestamp,
+          attributes: {
+            role: "assistant",
+            content:
+              fullTranscript.length > 0
+                ? fullTranscript[fullTranscript.length - 1].assistant_text
+                : input.result,
+          },
+        },
+      ],
+    });
+  } catch (error) {
+    debugBraintrust("OTel span export failed in logSafetyActionEvent", error);
+    // Keep tool execution non-blocking.
+  }
+
+  if (logInserted) {
+    return;
   }
 
   try {
@@ -359,7 +691,8 @@ export async function logSafetyActionEvent(input: SafetyActionLogInput) {
       full_transcript: fullTranscript,
       full_transcript_text: fullTranscriptText,
     });
-  } catch {
+  } catch (error) {
+    debugBraintrust("Legacy ingest failed in logSafetyActionEvent", error);
     // Best-effort only.
   }
 }
