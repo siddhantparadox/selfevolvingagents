@@ -9,6 +9,7 @@ import {
   ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ui/conversation";
+import { Response } from "@/components/ui/response";
 import { cn } from "@/lib/utils";
 
 type VoiceAgentCardProps = {
@@ -22,6 +23,27 @@ type TranscriptMessage = {
   role: "user" | "agent";
   content: string;
 };
+
+function formatAgentMessageAsMarkdown(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return trimmed;
+
+  // Preserve existing markdown if present.
+  if (/(^|\n)\s{0,3}([#>*-]|\d+\.)\s|```|\[[^\]]+\]\([^)]+\)/m.test(trimmed)) {
+    return trimmed;
+  }
+
+  const sentences =
+    trimmed
+      .match(/[^.!?]+[.!?]+|[^.!?]+$/g)
+      ?.map((s) => s.trim())
+      .filter(Boolean) ?? [trimmed];
+
+  if (sentences.length < 2) return trimmed;
+
+  const [headline, ...details] = sentences;
+  return `**${headline}**\n\n${details.map((d) => `- ${d}`).join("\n")}`;
+}
 
 export function VoiceAgentCard({ agentId }: VoiceAgentCardProps) {
   const conversationRef = useRef<Conversation | null>(null);
@@ -144,15 +166,15 @@ export function VoiceAgentCard({ agentId }: VoiceAgentCardProps) {
   const isBusy = status === "connecting" || status === "disconnecting";
 
   return (
-    <section className="w-full max-w-[1180px] rounded-2xl border border-white/10 bg-[#0f1116] p-6 text-white shadow-[0_20px_80px_rgba(0,0,0,0.55)]">
-      <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-        <div className="rounded-2xl border border-white/10 bg-black/20 p-6">
-          <h1 className="text-4xl font-semibold tracking-tight">Agent Orbs</h1>
-          <p className="mt-2 text-2xl text-slate-300">
+    <section className="w-full max-w-[1180px] rounded-2xl border border-white/10 bg-[#0f1116] p-5 text-white shadow-[0_20px_80px_rgba(0,0,0,0.55)]">
+      <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
+        <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
+          <h1 className="text-3xl font-semibold tracking-tight">Agent Orbs</h1>
+          <p className="mt-2 text-lg text-slate-300">
             Interactive orb visualization with agent states
           </p>
 
-          <div className="mx-auto mt-8 h-64 w-64 rounded-full border-4 border-black bg-black shadow-[0_0_45px_rgba(163,182,255,0.25)]">
+          <div className="mx-auto mt-6 h-56 w-56 rounded-full border-4 border-black bg-black shadow-[0_0_45px_rgba(163,182,255,0.25)]">
             <Orb
               agentState={agentState}
               colors={["#d0dcff", "#9fb6ff"]}
@@ -161,12 +183,12 @@ export function VoiceAgentCard({ agentId }: VoiceAgentCardProps) {
             />
           </div>
 
-          <div className="mt-8 flex items-center justify-center gap-3">
+          <div className="mt-6 flex items-center justify-center gap-3">
             {(["idle", "listening", "talking"] as UiState[]).map((state) => (
               <div
                 key={state}
                 className={cn(
-                  "rounded-xl border px-4 py-2 text-lg font-medium capitalize transition-colors",
+                  "rounded-xl border px-4 py-2 text-sm font-medium capitalize transition-colors",
                   uiState === state
                     ? "border-slate-500 bg-slate-800 text-white"
                     : "border-white/15 bg-white/5 text-slate-400"
@@ -177,27 +199,27 @@ export function VoiceAgentCard({ agentId }: VoiceAgentCardProps) {
             ))}
           </div>
 
-          <div className="mt-8 flex items-center justify-center">
+          <div className="mt-6 flex items-center justify-center">
             <button
               type="button"
               onClick={isConnected ? endConversation : startConversation}
               disabled={!agentId || isBusy}
-              className="rounded-xl border border-white/20 bg-white/10 px-8 py-4 text-2xl font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl border border-white/20 bg-white/10 px-7 py-3 text-lg font-semibold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isConnected ? "End Call" : isBusy ? "Connecting..." : "Start Call"}
             </button>
           </div>
 
-          <p className="mt-4 text-center text-lg text-slate-400">
+          <p className="mt-4 text-center text-sm text-slate-400">
             Status: <span className="capitalize">{status}</span>
           </p>
           {error ? (
-            <p className="mt-3 text-center text-base text-rose-300">{error}</p>
+            <p className="mt-3 text-center text-sm text-rose-300">{error}</p>
           ) : null}
         </div>
 
         <ConversationPanel className="h-[700px] border-white/10 bg-black/25">
-          <ConversationContent className="space-y-6 p-6">
+          <ConversationContent className="space-y-5 p-6">
             {messages.length === 0 ? (
               <ConversationEmptyState
                 title="No transcript yet"
@@ -217,14 +239,18 @@ export function VoiceAgentCard({ agentId }: VoiceAgentCardProps) {
                   ) : null}
 
                   <div
-                    className={cn(
-                      "max-w-[78%] rounded-3xl px-6 py-4 text-2xl leading-relaxed shadow-sm",
-                      message.role === "user"
-                        ? "bg-white text-slate-900"
-                        : "bg-[#22252c] text-slate-100"
-                    )}
+                    className={cn("max-w-[78%] rounded-3xl px-6 py-4 shadow-sm", {
+                      "bg-white text-slate-900": message.role === "user",
+                      "bg-[#22252c] text-slate-100": message.role === "agent",
+                    })}
                   >
-                    {message.content}
+                    {message.role === "agent" ? (
+                      <Response className="text-lg leading-relaxed text-slate-100 [&_p]:m-0 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_strong]:font-semibold">
+                        {formatAgentMessageAsMarkdown(message.content)}
+                      </Response>
+                    ) : (
+                      <p className="text-lg leading-relaxed">{message.content}</p>
+                    )}
                   </div>
                 </div>
               ))

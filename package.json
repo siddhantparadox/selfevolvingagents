@@ -21,6 +21,7 @@
     "radix-ui": "^1.4.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
+    "streamdown": "^2.3.0",
     "tailwind-merge": "^3.5.0",
     "three": "^0.183.1",
     "use-stick-to-bottom": "^1.1.3"
