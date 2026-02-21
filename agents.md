@@ -6,6 +6,12 @@ Build the real-time voice **agent loop** from ElevenLabs to Gemini for weather a
 ## Setup Reference
 1. See `setup.md` for local prerequisites, env requirements, tunnel startup, and ElevenLabs endpoint wiring.
 
+## Development Guardrail
+1. Run lint and check for errors regularly during implementation.
+2. Minimum check command:
+   - `npm run lint`
+3. Run lint after each meaningful change and fix issues before moving to the next phase.
+
 ## Locked Decisions (2026-02-21)
 1. Stack is `Next.js` + `TypeScript`.
 2. Agent must ask caller where they are calling from (city/state or ZIP) and use that location for data fetches.
